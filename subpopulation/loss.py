@@ -3,30 +3,6 @@ import itertools
 import numpy as np
 import sklearn
 import torch
-from wilds.common.metrics.metric import Metric
-from wilds.common.utils import minimum
-
-
-class F1(Metric):
-    def __init__(self, prediction_fn=None, name=None, average="binary"):
-        self.prediction_fn = prediction_fn
-        if name is None:
-            name = f"F1"
-            if average is not None:
-                name += f"-{average}"
-        self.average = average
-        super().__init__(name=name)
-
-    def _compute(self, y_pred, y_true):
-        if self.prediction_fn is not None:
-            y_pred = self.prediction_fn(y_pred)
-        score = sklearn.metrics.f1_score(
-            y_true, y_pred, average=self.average, labels=torch.unique(y_true)
-        )
-        return torch.tensor(score)
-
-    def worst(self, metrics):
-        return minimum(metrics)
 
 
 class LossComputer:
@@ -59,9 +35,6 @@ class LossComputer:
         self.n_groups = dataset.n_groups
         self.is_val = is_val
         self.device = device
-
-        if args.dataset in ["iWildCam"]:
-            self.f1_score = F1(prediction_fn=None, average="macro")
 
         if not args.diversify:
             print("Loss n groups:", self.n_groups)
