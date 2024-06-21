@@ -17,7 +17,7 @@ from transformers import (
 from loss import LossComputer
 
 sys.path.insert(1, os.path.join(sys.path[0], ".."))
-from divdis import DivDisLoss
+from divdis import DivDisLoss, FreqRegLoss
 
 device = torch.device("cuda")
 
@@ -129,6 +129,7 @@ def run_epoch_divdis_train(
 ):
     assert is_training
     loss_fn = DivDisLoss(heads=args.heads, mode=args.mode, reduction=args.reduction)
+    reg_loss_fn = FreqRegLoss(heads=args.heads)
 
     model.train()
     if "bert" in args.model:
@@ -192,34 +193,7 @@ def run_epoch_divdis_train(
         repulsion_loss = loss_fn(yhat_unlabeled)
         loss_main += repulsion_loss * args.diversity_weight
 
-        yhat_unlabeled_chunked = torch.chunk(yhat_unlabeled, args.heads, dim=-1)
-        preds = torch.stack(yhat_unlabeled_chunked).softmax(-1)
-        if args.reg_mode == "ratio":
-            ratio_losses = (preds[:, :, 0].mean(-1) - unlabeled_zero_freq).abs()
-            reg_loss = ratio_losses.mean()
-        elif args.reg_mode == "entropy":
-            avg_preds = preds.mean(1)
-            entropies = -Categorical(probs=avg_preds).entropy()
-            reg_loss = entropies.mean()
-        elif "kl" in args.reg_mode:
-            if "ratio" in args.reg_mode:
-                avg_preds_source = torch.tensor(
-                    [unlabeled_zero_freq, 1 - unlabeled_zero_freq]
-                ).to(preds.device)
-            else:
-                avg_preds_source = (
-                    torch.stack(yhat_chunked).softmax(-1).mean([0, 1]).detach()
-                )
-            avg_preds_target = preds.mean(1)
-            dist_source = Categorical(probs=avg_preds_source)
-            dist_target = Categorical(probs=avg_preds_target)
-            if args.reg_mode in ["kl_forward", "kl_ratio_f"]:
-                kl = torch.distributions.kl.kl_divergence(dist_source, dist_target)
-            elif args.reg_mode in ["kl_backward", "kl_ratio_b"]:
-                kl = torch.distributions.kl.kl_divergence(dist_target, dist_source)
-            reg_loss = kl.mean()
-        else:
-            raise ValueError(f"{args.reg_mode=} not implemented!")
+        reg_loss = reg_loss_fn(yhat, yhat_unlabeled)
         loss_main += reg_loss * args.reg_weight
 
         if "bert" in args.model:
@@ -234,7 +208,7 @@ def run_epoch_divdis_train(
             optimizer.step()
 
         del loss_main, repulsion_loss, reg_loss, all_loss_mains
-        del yhat_chunked, yhat_unlabeled_chunked, preds
+        del yhat_chunked
 
         if (batch_idx + 1) % log_every == 0:
             all_stats = {}

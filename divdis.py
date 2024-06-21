@@ -1,6 +1,7 @@
 import torch
 from einops import rearrange
 from torch import nn
+from torch.distributions.categorical import Categorical
 
 
 def to_probs(logits, heads):
@@ -102,3 +103,33 @@ class DivDisLoss(nn.Module):
             raise ValueError(f"{reduction=} not implemented!")
 
         return repulsion_loss
+
+class FreqRegLoss(nn.Module):
+    def __init__(self, heads):
+        super().__init__()
+        self.heads = heads
+
+    def forward(self, source_logits, target_logits):
+        source_bs = source_logits.shape[0]
+        target_bs = target_logits.shape[0]
+        n_classes = source_logits.shape[-1] / self.heads
+        # chunk source and target logits into heads
+        source_logits_chunked = torch.chunk(source_logits, self.heads, dim=-1) # [H * [B, C]
+        target_logits_chunked = torch.chunk(target_logits, self.heads, dim=-1) # [H * [B, C]
+        # construct target distribution probabilities
+        preds = torch.stack(target_logits_chunked).softmax(-1) # [H, B, C]
+        assert preds.shape == (self.heads, target_bs, n_classes)
+        # compute average predictions on source distribution (to match on target distribution)
+        # NOTE: this is kind of awkward b/c the spurious correlate might not have the same frequency but whatever
+        avg_preds_source = torch.stack(source_logits_chunked).softmax(-1).mean([0, 1]).detach() # C
+        assert avg_preds_source.shape == (n_classes,)
+        # compute KL Divergence between source and target distribution on average predictions
+        avg_preds_target = preds.mean(1) # [H, C]
+        assert avg_preds_target.shape == (self.heads, n_classes)
+        dist_source = Categorical(probs=avg_preds_source)
+        dist_target = Categorical(probs=avg_preds_target)
+        kl = torch.distributions.kl.kl_divergence(dist_target, dist_source)
+        reg_loss = kl.mean()
+        return reg_loss
+
+
