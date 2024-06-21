@@ -136,6 +136,7 @@ def get_args():
     parser.add_argument("--group_by_label", action="store_true", default=False)
     parser.add_argument("--exp_string", type=str, default="")
     parser.add_argument("--debug", action="store_true", default=False)
+    parser.add_argument("--device", type=str, default="mps")
 
     args = parser.parse_args()
     args.start_time = datetime.now()

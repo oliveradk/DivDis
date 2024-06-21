@@ -43,8 +43,8 @@ def run_epoch_divdis_eval(
         y_cp, g_cp = copy.deepcopy(y), copy.deepcopy(g)
         del y, g
         y, g = y_cp, g_cp
-        x, y, g = x.cuda(), y.cuda(), g.cuda()
-        y_alt = (g % 2).cuda()
+        x, y, g = x.to(args.device), y.to(args.device), g.to(args.device)
+        y_alt = (g % 2).to(args.device)
 
         yhat = model(x)
         yhat_chunked = torch.chunk(yhat, args.heads, dim=-1)
@@ -155,10 +155,10 @@ def run_epoch_divdis_train(
         y_cp, g_cp = copy.deepcopy(y), copy.deepcopy(g)
         del y, g
         y, g = y_cp, g_cp
-        x, y, g = x.cuda(), y.cuda(), g.cuda()
-        y_alt = (g % 2).cuda()
+        x, y, g = x.to(args.device), y.to(args.device), g.to(args.device)
+        y_alt = (g % 2).to(args.device)
         x_unlabeled, *_ = batch_unlabeled
-        x_unlabeled = x_unlabeled.cuda()
+        x_unlabeled = x_unlabeled.to(args.device)
 
         if args.bn_mode == "train":
             yhat = model(x)
@@ -294,7 +294,7 @@ def run_epoch(
             y_cp, g_cp = copy.deepcopy(y), copy.deepcopy(g)
             del y, g
             y, g = y_cp, g_cp
-            x, y, g = x.cuda(), y.cuda(), g.cuda()
+            x, y, g = x.to(args.device), y.to(args.device), g.to(args.device)
             y_onehot = None
 
             outputs = model(x)
@@ -340,7 +340,7 @@ def train(
     args,
     epoch_offset,
 ):
-    model = model.cuda()
+    model = model.to(args.device)
 
     # process generalization adjustment stuff
     adjustments = [float(c) for c in args.generalization_adjustment.split(",")]
@@ -451,6 +451,7 @@ def train(
                 normalize_loss=args.use_normalized_loss,
                 btl=args.btl,
                 min_var_weight=args.minimum_variational_weight,
+                device=args.device,
             )
             for k in loss_computer_keys
         }
@@ -467,6 +468,7 @@ def train(
             normalize_loss=args.use_normalized_loss,
             btl=args.btl,
             min_var_weight=args.minimum_variational_weight,
+            device=args.device
         )
 
     best_val_acc = 0
@@ -511,7 +513,7 @@ def train(
             }
             if args.diversify:
                 val_loss_computers = {
-                    k: LossComputer(**val_lc_kwargs, dataset=dataset["val_data"])
+                    k: LossComputer(**val_lc_kwargs, dataset=dataset["val_data"], device=args.device)
                     for k in loss_computer_keys
                 }
                 run_epoch_divdis_eval(
@@ -522,7 +524,7 @@ def train(
                 )
             else:
                 val_loss_computer = LossComputer(
-                    **val_lc_kwargs, dataset=dataset["val_data"]
+                    **val_lc_kwargs, dataset=dataset["val_data"], device=args.device
                 )
                 run_epoch(
                     optimizer=optimizer,
@@ -536,7 +538,7 @@ def train(
             if args.in_dist_testing:
                 if args.diversify:
                     val_loss_computers = {
-                        k: LossComputer(**val_lc_kwargs, dataset=dataset["val_id_data"])
+                        k: LossComputer(**val_lc_kwargs, dataset=dataset["val_id_data"], device=args.device)
                         for k in loss_computer_keys
                     }
                     run_epoch_divdis_eval(
@@ -547,7 +549,7 @@ def train(
                     )
                 else:
                     val_loss_computer = LossComputer(
-                        **val_lc_kwargs, dataset=dataset["val_id_data"]
+                        **val_lc_kwargs, dataset=dataset["val_id_data"], device=args.device
                     )
                     run_epoch(
                         optimizer=optimizer,
@@ -575,7 +577,7 @@ def train(
                 }
                 if args.diversify:
                     test_loss_computers = {
-                        k: LossComputer(**test_lc_kwargs, dataset=dataset["test_data"])
+                        k: LossComputer(**test_lc_kwargs, dataset=dataset["test_data"], device=args.device)
                         for k in loss_computer_keys
                     }
                     run_epoch_divdis_eval(
@@ -586,7 +588,7 @@ def train(
                     )
                 else:
                     test_loss_computer = LossComputer(
-                        **test_lc_kwargs, dataset=dataset["test_data"]
+                        **test_lc_kwargs, dataset=dataset["test_data"], device=args.device
                     )
                     run_epoch(
                         optimizer=optimizer,
@@ -600,7 +602,7 @@ def train(
                     if args.diversify:
                         test_loss_computers = {
                             k: LossComputer(
-                                **test_lc_kwargs, dataset=dataset["test_id_data"]
+                                **test_lc_kwargs, dataset=dataset["test_id_data"], device=args.device
                             )
                             for k in loss_computer_keys
                         }
@@ -612,7 +614,7 @@ def train(
                         )
                     else:
                         test_loss_computer = LossComputer(
-                            **test_lc_kwargs, dataset=dataset["test_id_data"]
+                            **test_lc_kwargs, dataset=dataset["test_id_data"], device=args.device
                         )
                         run_epoch(
                             optimizer=optimizer,
